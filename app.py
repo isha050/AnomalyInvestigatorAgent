@@ -9,6 +9,11 @@ from google.genai.types import Content, Part
 
 from coordinator_agent import coordinator
 from data_loader import SPEND_DATA, CREATIVE_DATA, CVR_DATA, COMPETITOR_TREND_DATA
+from spend_analysis import analyze_spend
+from creative_analysis import analyze_creative
+from seasonal_analysis import analyze_seasonality
+from competitor_analysis import analyze_competitor_trend
+from tech_analysis import analyze_tech_performance
 
 # ── Page config (must be first Streamlit call) ────────────────────────────────
 
@@ -327,22 +332,146 @@ def render_chart(title: str, dates: list, values: list, ylabel: str):
 
 # ── Text helpers ──────────────────────────────────────────────────────────────
 
-def extract_section(text: str, keyword: str) -> str:
-    if not text:
-        return ""
-    lines = text.splitlines()
-    capture, result = False, []
-    markers = ["analysis", "insight", "trend", "finding", "summary", "signal"]
-    for line in lines:
-        if keyword.lower() in line.lower():
-            capture = True
-        elif capture and line.strip() and any(
-            k in line.lower() for k in markers
-        ) and keyword.lower() not in line.lower():
+# ✅ NEW: Build signal texts directly from analysis functions.
+# This bypasses the broken intermediate event parsing entirely.
+def get_signal_texts(query: str) -> dict:
+    import re
+
+    date_match = re.search(r"\d{4}-\d{2}-\d{2}", query)
+    date = date_match.group(0) if date_match else None
+
+    channel = "Google"
+    for ch in ["Google", "Meta", "Facebook", "TikTok"]:
+        if ch.lower() in query.lower():
+            channel = ch
             break
-        if capture:
-            result.append(line)
-    return "\n".join(result).strip()
+
+    signals = {}
+
+    # ── Spend ──────────────────────────────────────────────────────────────
+    if date:
+        try:
+            result = analyze_spend(SPEND_DATA, channel, date)
+            if "error" in result:
+                signals["spend"] = f"• Could not analyze spend: {result['error']}"
+            else:
+                change  = result.get("percentage_change", 0)
+                recent  = result.get("recent_avg", 0)
+                baseline= result.get("baseline_avg", 0)
+                reason  = result.get("reason", "")
+                anomaly = result.get("is_anomaly", False)
+                verdict = "<b>Significant spend change detected.</b>" if anomaly else "<b>Spend is within normal range.</b>"
+                signals["spend"] = (
+                    f"• {verdict}<br>"
+                    f"• {reason}<br>"
+                    f"• Recent average spend: <b>${recent:,.0f}</b><br>"
+                    f"• Baseline average spend: <b>${baseline:,.0f}</b><br>"
+                    f"• Change: <b>{change:+.1f}%</b>"
+                )
+        except Exception as e:
+            signals["spend"] = f"• Spend analysis error: {e}"
+    else:
+        signals["spend"] = "• No date found in query — could not run spend analysis."
+
+    # ── Creative ────────────────────────────────────────────────────────────
+    if date:
+        try:
+            result = analyze_creative(CREATIVE_DATA, channel, date)
+            if not result:
+                signals["creative"] = "• <b>No creative data found for this channel/date.</b>"
+            elif isinstance(result, list) and len(result) > 0:
+                lines = []
+                for item in result[:3]:
+                    cid    = item.get("creative_id", "unknown")
+                    ctr    = item.get("ctr", 0)
+                    fatigued = item.get("is_fatigued", False)
+                    change = item.get("ctr_change_pct", 0)
+                    if fatigued:
+                        verdict = f"<b>Creative fatigue detected ({change:+.1f}% CTR drop)</b>"
+                    else:
+                        verdict = f"<b>No fatigue ({change:+.1f}% CTR change)</b>"
+                    lines.append(f"• {cid}: CTR {ctr:.3f} — {verdict}")
+                signals["creative"] = "<br>".join(lines)
+            else:
+                signals["creative"] = f"• {result}"
+        except Exception as e:
+            signals["creative"] = f"• Creative analysis error: {e}"
+    else:
+        signals["creative"] = "• No date found in query — could not run creative analysis."
+
+    # ── Seasonal ────────────────────────────────────────────────────────────
+    if date:
+        try:
+            result = analyze_seasonality(date)
+            if isinstance(result, dict):
+                if "error" in result:
+                    signals["seasonal"] = f"• {result['error']}"
+                else:
+                    is_seasonal = result.get("is_seasonal", False)
+                    event       = result.get("event")
+                    days        = result.get("days_from_event")
+                    reason      = result.get("reason", "")
+                    verdict = "<b>Seasonal event detected.</b>" if is_seasonal else "<b>No seasonal impact detected.</b>"
+                    lines = [f"• {verdict}", f"• {reason}"]
+                    if event:
+                        lines.append(f"• Nearby event: <b>{event}</b> ({days} days away)")
+                    signals["seasonal"] = "<br>".join(lines)
+            else:
+                signals["seasonal"] = f"• {result}"
+        except Exception as e:
+            signals["seasonal"] = f"• Seasonal analysis error: {e}"
+    else:
+        signals["seasonal"] = "• No date found in query — could not run seasonal analysis."
+
+    # ── Competitor ──────────────────────────────────────────────────────────
+    if date:
+        try:
+            result = analyze_competitor_trend(date)
+            if isinstance(result, dict):
+                if "error" in result:
+                    signals["competitor"] = f"• {result['error']}"
+                else:
+                    spike   = result.get("is_competitor_spike", False)
+                    change  = result.get("trend_change_pct", 0)
+                    reason  = result.get("reason", "")
+                    verdict = "<b>Competitor activity spike detected.</b>" if spike else "<b>No significant competitor activity.</b>"
+                    signals["competitor"] = (
+                        f"• {verdict}<br>"
+                        f"• {reason}<br>"
+                        f"• Search demand change: <b>{change:+.1f}%</b>"
+                    )
+            else:
+                signals["competitor"] = f"• {result}"
+        except Exception as e:
+            signals["competitor"] = f"• Competitor analysis error: {e}"
+    else:
+        signals["competitor"] = "• No date found in query — could not run competitor analysis."
+
+    # ── Tech ────────────────────────────────────────────────────────────────
+    if date:
+        try:
+            result = analyze_tech_performance(date)
+            if isinstance(result, dict):
+                if "error" in result:
+                    signals["tech"] = f"• {result['error']}"
+                else:
+                    issue   = result.get("is_tech_issue", False)
+                    change  = result.get("cvr_change_pct", 0)
+                    reason  = result.get("reason", "")
+                    verdict = "<b>Possible tech or tracking issue detected.</b>" if issue else "<b>No tech or tracking issues detected.</b>"
+                    signals["tech"] = (
+                        f"• {verdict}<br>"
+                        f"• {reason}<br>"
+                        f"• Conversion rate change: <b>{change:+.1f}%</b>"
+                    )
+            else:
+                signals["tech"] = f"• {result}"
+        except Exception as e:
+            signals["tech"] = f"• Tech analysis error: {e}"
+    else:
+        signals["tech"] = "• No date found in query — could not run tech analysis."
+
+    return signals
 
 
 def format_bubble_html(text: str) -> str:
@@ -457,17 +586,22 @@ if submitted and query.strip():
                 t = event.content.parts[0].text
                 if t:
                     intermediate_texts.append(t)
+            # ✅ FIX 1A: Guard final output capture so it doesn't crash
+            # if the final event has no content or parts
             if event.is_final_response():
-                st.session_state.final_output = event.content.parts[0].text
+                if (hasattr(event, "content")
+                        and event.content
+                        and event.content.parts
+                        and event.content.parts[0].text):
+                    st.session_state.final_output = event.content.parts[0].text
+                else:
+                    # Fallback: use everything collected so far as the output
+                    st.session_state.final_output = "\n\n".join(intermediate_texts) or "No output received from agents."
 
-    all_signals = "\n\n".join(intermediate_texts)
-    st.session_state.agent_signals = {
-        "spend":      extract_section(all_signals, "spend"),
-        "creative":   extract_section(all_signals, "creative"),
-        "seasonal":   extract_section(all_signals, "seasonal"),
-        "competitor": extract_section(all_signals, "competitor"),
-        "tech":       extract_section(all_signals, "tech"),
-    }
+    # ✅ NEW: Populate signal cards directly from analysis functions,
+    # not from trying to parse the agent event stream (which doesn't
+    # surface sub-agent text reliably with ParallelAgent).
+    st.session_state.agent_signals = get_signal_texts(query)
 
 # ── Output ────────────────────────────────────────────────────────────────────
 

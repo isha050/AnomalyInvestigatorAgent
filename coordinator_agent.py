@@ -63,43 +63,33 @@ coordinator = SequentialAgent(
     sub_agents=[parallel_agent, synthesis_agent]
 )
 
-# Step 5: Setup runner
-session_service = InMemorySessionService()
 
-runner = Runner(
-    agent=coordinator,
-    session_service=session_service,
-    app_name="anomaly_system"
-)
 
 def main():
-    # Step 6: Create session
+    # ✅ FIX 2b: session_service is now local to main() only
+    local_session_service = InMemorySessionService()
+    local_runner = Runner(
+        agent=coordinator,
+        session_service=local_session_service,
+        app_name="anomaly_system"
+    )
+
     asyncio.run(
-        session_service.create_session(
+        local_session_service.create_session(
             app_name="anomaly_system",
             user_id="user1",
             session_id="s1"
         )
     )
 
-    # Step 7: Input
     query = input("Enter your query: ")
+    message = Content(role="user", parts=[Part(text=query)])
 
-    message = Content(
-        role="user",
-        parts=[Part(text=query)]
-    )
-
-    # Step 8: Run system
     final_output = None
-
-    for event in runner.run(
-        user_id="user1",
-        session_id="s1",
-        new_message=message
-    ):
+    for event in local_runner.run(user_id="user1", session_id="s1", new_message=message):
         if event.is_final_response():
-            final_output = event.content.parts[0].text
+            if event.content and event.content.parts:
+                final_output = event.content.parts[0].text
 
     print("\nFinal Analysis:")
     print(final_output)
