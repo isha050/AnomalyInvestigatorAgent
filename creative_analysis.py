@@ -65,14 +65,6 @@ def analyze_creative(data, channel, target_date):
     return results
 
 if __name__ == "__main__":
-    data = [
-        {"creative_id": "A", "channel": "Google", "date": "2024-01-01", "ctr": 0.06},
-        {"creative_id": "A", "channel": "Google", "date": "2024-01-02", "ctr": 0.058},
-        {"creative_id": "A", "channel": "Google", "date": "2024-01-03", "ctr": 0.057},
-        {"creative_id": "A", "channel": "Google", "date": "2024-01-15", "ctr": 0.045},
-        {"creative_id": "A", "channel": "Google", "date": "2024-01-16", "ctr": 0.042},
-        {"creative_id": "A", "channel": "Google", "date": "2024-01-17", "ctr": 0.040}
-    ]
-
-    result = analyze_creative(data, "Google", "2024-01-17")
+    from data_loader import CREATIVE_DATA
+    result = analyze_creative(CREATIVE_DATA, "Google", "2024-01-17")
     print(result)

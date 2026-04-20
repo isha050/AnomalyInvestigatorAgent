@@ -7,10 +7,14 @@ load_dotenv()
 
 def main():
     from data_loader import SPEND_DATA
+
     data = SPEND_DATA
 
+    channel = input("Enter channel (e.g. Google): ").strip()
+    date = input("Enter date (YYYY-MM-DD): ").strip()
+
     # Step 3: Call function
-    result = analyze_spend(data, "Google", "2024-01-06")
+    result = analyze_spend(data, channel, date)
 
     if "error" in result:
         print(result)

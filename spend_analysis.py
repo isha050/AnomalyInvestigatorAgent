@@ -61,14 +61,6 @@ def analyze_spend(data, channel, date):
     }
 
 if __name__ == "__main__":
-    data = [
-        {"date": "2024-01-01", "channel": "Google", "spend": 5000},
-        {"date": "2024-01-02", "channel": "Google", "spend": 5000},
-        {"date": "2024-01-03", "channel": "Google", "spend": 5000},
-        {"date": "2024-01-04", "channel": "Google", "spend": 2000},
-        {"date": "2024-01-05", "channel": "Google", "spend": 2100},
-        {"date": "2024-01-06", "channel": "Google", "spend": 2200}
-    ]
-
-    result = analyze_spend(data, "Google", "2024-01-06")
+    from data_loader import SPEND_DATA
+    result = analyze_spend(SPEND_DATA, "Google", "2024-01-06")
     print(result)

@@ -48,7 +48,17 @@ def _load_competitor_trend_data():
             data[row["date"]] = float(row["trend_index"]) # Support floats generally
     return data
 
+def _load_seasonal_events():
+    path = os.path.join(DATA_DIR, "seasonal_events.csv")
+    data = {}
+    with open(path, "r") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            data[row["date"]] = row["event"]
+    return data
+
 SPEND_DATA = _load_spend_data()
 CREATIVE_DATA = _load_creative_data()
 CVR_DATA = _load_cvr_data()
 COMPETITOR_TREND_DATA = _load_competitor_trend_data()
+SEASONAL_EVENTS_DATA = _load_seasonal_events()
