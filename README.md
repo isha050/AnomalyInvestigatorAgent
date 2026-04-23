@@ -11,13 +11,14 @@ The system includes:
 - **Competitor Agent**: Analyzes competitor trends and market changes.
 - **Technical Agent**: Investigates technical issues like site downtime or tracking errors.
 
-The agents ingest data from local CSV datasets (spend, creative, seasonality, conversion rates, and competitor trends) and provide decisive, data-backed root cause analyses through a Streamlit user interface.
+The agents ingest data from Google BigQuery (spend, creative, seasonality, conversion rates, and competitor trends) and provide decisive, data-backed root cause analyses through a Streamlit user interface.
 
 ## Setup Instructions
 
 ### Prerequisites
 - Python 3.8+
 - Necessary API Keys for the LLM provider (e.g., OpenAI, Gemini) depending on the underlying agent configurations.
+- Google Cloud Service Account with BigQuery access.
 
 ### Installation
 1. **Navigate to the project directory**:
@@ -30,7 +31,7 @@ The agents ingest data from local CSV datasets (spend, creative, seasonality, co
    ```bash
    pip install -r requirements.txt
    ```
-   *(Typically requires `streamlit`, `pandas`, and your chosen LLM framework packages).*
+   *(Typically requires `streamlit`, `google-cloud-bigquery`, and your chosen LLM framework packages).*
 
 3. **Set Environment Variables**:
    Ensure you have your API keys exported in your terminal or set up in a `.env` file in the root directory.

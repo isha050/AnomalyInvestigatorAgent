@@ -1,60 +1,71 @@
-import csv
 import os
-
-DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+from bigquery_tool import query_bigquery
 
 def _load_spend_data():
-    path = os.path.join(DATA_DIR, "spend_data.csv")
+    result = query_bigquery("SELECT * FROM marketing_data.spend_data")
+    if "error" in result:
+        print(f"Error loading spend data: {result['error']}")
+        return []
+    
     data = []
-    with open(path, "r") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            data.append({
-                "date": row["date"],
-                "channel": row["channel"],
-                "spend": float(row["spend"])
-            })
+    for row in result["rows"]:
+        data.append({
+            "date": row["date"].strftime("%Y-%m-%d") if hasattr(row["date"], "strftime") else str(row["date"]),
+            "channel": row["channel"],
+            "spend": float(row["spend"])
+        })
     return data
 
 def _load_creative_data():
-    path = os.path.join(DATA_DIR, "creative_data.csv")
+    result = query_bigquery("SELECT * FROM marketing_data.creative_data")
+    if "error" in result:
+        print(f"Error loading creative data: {result['error']}")
+        return []
+        
     data = []
-    with open(path, "r") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            data.append({
-                "creative_id": row["creative_id"],
-                "channel": row["channel"],
-                "date": row["date"],
-                "ctr": float(row["ctr"])
-            })
+    for row in result["rows"]:
+        data.append({
+            "creative_id": row["creative_id"],
+            "channel": row["channel"],
+            "date": row["date"].strftime("%Y-%m-%d") if hasattr(row["date"], "strftime") else str(row["date"]),
+            "ctr": float(row["ctr"])
+        })
     return data
 
 def _load_cvr_data():
-    path = os.path.join(DATA_DIR, "cvr_data.csv")
+    result = query_bigquery("SELECT * FROM marketing_data.cvr_data")
+    if "error" in result:
+        print(f"Error loading cvr data: {result['error']}")
+        return {}
+        
     data = {}
-    with open(path, "r") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            data[row["date"]] = float(row["cvr"])
+    for row in result["rows"]:
+        date_str = row["date"].strftime("%Y-%m-%d") if hasattr(row["date"], "strftime") else str(row["date"])
+        data[date_str] = float(row["cvr"])
     return data
 
 def _load_competitor_trend_data():
-    path = os.path.join(DATA_DIR, "competitor_trend_data.csv")
+    result = query_bigquery("SELECT * FROM marketing_data.competitor_trend_data")
+    if "error" in result:
+        print(f"Error loading competitor trend data: {result['error']}")
+        return {}
+        
     data = {}
-    with open(path, "r") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            data[row["date"]] = float(row["trend_index"]) # Support floats generally
+    for row in result["rows"]:
+        date_str = row["date"].strftime("%Y-%m-%d") if hasattr(row["date"], "strftime") else str(row["date"])
+        data[date_str] = float(row["trend_index"])
     return data
 
 def _load_seasonal_events():
-    path = os.path.join(DATA_DIR, "seasonal_events.csv")
+    result = query_bigquery("SELECT * FROM marketing_data.seasonal_events")
+    if "error" in result:
+        print(f"Error loading seasonal events: {result['error']}")
+        return {}
+        
     data = {}
-    with open(path, "r") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            data[row["date"]] = row["event"]
+    for row in result["rows"]:
+        date_str = row["date"].strftime("%Y-%m-%d") if hasattr(row["date"], "strftime") else str(row["date"])
+        data[date_str] = row["event"]
     return data
 
 SPEND_DATA = _load_spend_data()

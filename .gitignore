@@ -25,3 +25,8 @@ Thumbs.db
 # Notebooks and caches
 .ipynb_checkpoints/
 .pytest_cache/
+
+# Secrets
+*.json
+service_account.json
+*-*.json
