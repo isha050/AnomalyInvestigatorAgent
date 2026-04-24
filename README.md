@@ -1,48 +1,53 @@
-# Anomaly Investigator Agent
+# Anomaly Investigator
 
-## Project Summary
-The Anomaly Investigator Agent is a multi-agent marketing diagnostic platform. It uses a coordinated system of specialized AI agents to analyze performance anomalies in marketing campaigns. 
+Root cause analysis for marketing performance anomalies using parallel AI agents.
 
-The system includes:
-- **Coordinator Agent**: Orchestrates the diagnostic process and synthesizes findings.
-- **Spend Agent**: Analyzes spend anomalies, budget pacing, and channel allocation.
-- **Creative Agent**: Evaluates creative performance, click-through rates (CTR), and ad fatigue.
-- **Seasonality Agent**: Checks for external seasonal impacts on performance.
-- **Competitor Agent**: Analyzes competitor trends and market changes.
-- **Technical Agent**: Investigates technical issues like site downtime or tracking errors.
+## Project Structure
+- `backend/`: FastAPI server with Google ADK agents and BigQuery integration.
+- `frontend/`: React + Vite + Tailwind + Recharts dashboard.
 
-The agents ingest data from Google BigQuery (spend, creative, seasonality, conversion rates, and competitor trends) and provide decisive, data-backed root cause analyses through a Streamlit user interface.
-
-## Setup Instructions
+## Setup
 
 ### Prerequisites
-- Python 3.8+
-- Necessary API Keys for the LLM provider (e.g., OpenAI, Gemini) depending on the underlying agent configurations.
-- Google Cloud Service Account with BigQuery access.
+- Node.js & npm
+- Python 3.10+
 
-### Installation
-1. **Navigate to the project directory**:
+### Environment Variables
+Create a `.env` file in the `backend/` directory with the following:
+```env
+GOOGLE_API_KEY=your_gemini_api_key
+BQ_PROJECT_ID=your_bigquery_project_id
+GOOGLE_APPLICATION_CREDENTIALS=path/to/your/service-account.json
+```
+
+## Running the Application
+
+### Backend
+1. Navigate to the backend directory:
    ```bash
-   cd AnomalyInvestigatorAgent
+   cd backend
    ```
-
-2. **Install dependencies**:
-   If you have a `requirements.txt` file, install the required packages:
+2. Install dependencies:
    ```bash
    pip install -r requirements.txt
    ```
-   *(Typically requires `streamlit`, `google-cloud-bigquery`, and your chosen LLM framework packages).*
-
-3. **Set Environment Variables**:
-   Ensure you have your API keys exported in your terminal or set up in a `.env` file in the root directory.
+3. Run the server:
    ```bash
-   export OPENAI_API_KEY="your-api-key-here"
+   uvicorn server:app --reload
    ```
+   The backend will be available at `http://localhost:8000`.
 
-### Running the Application
-To launch the Streamlit interface, run the following command from the root of the project:
-```bash
-streamlit run app.py
-```
-
-This will start a local server and open the marketing diagnostics dashboard in your default web browser. From there, you can input a channel and date to run the coordinated anomaly investigation.
+### Frontend
+1. Navigate to the frontend directory:
+   ```bash
+   cd frontend
+   ```
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Run the development server:
+   ```bash
+   npm run dev
+   ```
+   The frontend will be available at `http://localhost:5173`.

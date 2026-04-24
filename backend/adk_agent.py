@@ -1,5 +1,6 @@
+import os
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 import asyncio
 from google.adk.agents import Agent
@@ -23,21 +24,19 @@ agent = Agent(
     model="gemini-2.5-flash", # changed from gemini-1.0-pro as before to avoid 404
     instruction="""
 You are a marketing analyst.
-
 If the user asks about CPA changes, spend changes, or performance issues,
 use the spend_tool_func to analyze spend.
 
+IMPORTANT: The channel name must be exactly "Google" (capital G, no other words).
+The date must be in YYYY-MM-DD format.
+
 Then explain the result strictly as a bulleted list (1-2 points). Do not write paragraphs or summaries.
 Do not guess. Always rely on tool output.
-
 If a date and channel are present, you MUST call the tool.
 Do not refuse unless the tool returns an error.
-
 You MUST evaluate your domain if a date is present.
-
 If no issue is found:
 → say "Spend is not a significant factor."
-
 Do NOT return empty responses.
 """,
     tools=[spend_tool]
