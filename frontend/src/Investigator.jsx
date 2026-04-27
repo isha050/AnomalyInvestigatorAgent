@@ -3,8 +3,13 @@ import { Search, Send, Activity, Loader2 } from 'lucide-react';
 import SignalCard from './components/SignalCard';
 import ChartPanel from './components/ChartPanel';
 import SummaryBubble from './components/SummaryBubble';
+import AutoDetector from './components/AutoDetector';
+import ChatThread from './components/ChatThread';
 
 const Investigator = () => {
+  const [activeTab, setActiveTab] = useState('manual');
+  const [showChat, setShowChat] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState('');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [signals, setSignals] = useState({
@@ -61,6 +66,9 @@ const Investigator = () => {
                   ...prev,
                   [agent]: { text, loading: false }
                 }));
+                if (agent === 'synthesis_agent') {
+                  setAnalysisResult(text);
+                }
               }
             } catch (e) {
               // skip ping lines and non-json
@@ -96,7 +104,7 @@ const Investigator = () => {
   return (
     <div className="min-h-screen bg-bg text-text-primary p-6 md:p-12">
       <div className="max-w-4xl mx-auto">
-        <header className="mb-12 flex items-center justify-between">
+        <header className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold mb-2 flex items-center">
               <Activity className="text-accent mr-3" />
@@ -107,56 +115,116 @@ const Investigator = () => {
         </header>
 
         <main>
-          <div className="relative mb-12">
-            <input
-              type="text"
-              className="w-full bg-surface border border-border rounded-xl py-4 pl-12 pr-16 focus:outline-none focus:border-accent transition-colors text-lg"
-              placeholder="Why did Google CPA increase on 2024-01-11?"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && runAnalysis()}
-            />
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" size={20} />
+          <div className="flex space-x-6 border-b border-border mb-8">
             <button
-              onClick={runAnalysis}
-              disabled={loading}
-              className="absolute right-3 top-1/2 -translate-y-1/2 bg-accent hover:bg-accent/80 disabled:bg-surface-2 p-2 rounded-lg transition-colors"
+              onClick={() => setActiveTab('manual')}
+              className={`pb-3 text-lg font-medium transition-colors ${
+                activeTab === 'manual'
+                  ? 'border-b-2 border-accent text-accent'
+                  : 'text-text-muted hover:text-text-primary'
+              }`}
             >
-              {loading ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
+              Manual Query
+            </button>
+            <button
+              onClick={() => setActiveTab('auto')}
+              className={`pb-3 text-lg font-medium transition-colors ${
+                activeTab === 'auto'
+                  ? 'border-b-2 border-accent text-accent'
+                  : 'text-text-muted hover:text-text-primary'
+              }`}
+            >
+              Auto Detector
             </button>
           </div>
 
-          <div className="space-y-8">
-            <ChartPanel />
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {agentConfig.map((config) => (
-                <div key={config.id} className="relative">
-                  {signals[config.id].loading && (
-                    <div className="absolute inset-0 bg-bg/50 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-lg border border-border/50">
-                      <div className="flex flex-col items-center">
-                        <Loader2 className="animate-spin text-accent mb-2" />
-                        <span className="text-xs text-text-muted">Analyzing {config.label}...</span>
-                      </div>
-                    </div>
-                  )}
-                  <SignalCard
-                    agent={config.label}
-                    text={signals[config.id].text || (signals[config.id].loading ? '' : 'No data yet.')}
-                  />
-                </div>
-              ))}
-            </div>
-
-            {signals.synthesis_agent.loading ? (
-              <div className="bg-surface-2 border border-border border-dashed rounded-xl p-8 flex flex-col items-center justify-center">
-                <Loader2 className="animate-spin text-accent mb-3" size={32} />
-                <p className="text-text-muted">Synthesizing final report...</p>
+          {activeTab === 'manual' && (
+            <>
+              <div className="relative mb-12">
+                <input
+                  type="text"
+                  className="w-full bg-surface border border-border rounded-xl py-4 pl-12 pr-16 focus:outline-none focus:border-accent transition-colors text-lg"
+                  placeholder="Why did Google CPA increase on 2024-01-11?"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      runAnalysis();
+                    }
+                  }}
+                />
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" size={20} />
+                <button
+                  onClick={runAnalysis}
+                  disabled={loading}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 bg-accent hover:bg-accent/80 disabled:bg-surface-2 p-2 rounded-lg transition-colors"
+                >
+                  {loading ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
+                </button>
               </div>
-            ) : signals.synthesis_agent.text ? (
-              <SummaryBubble text={signals.synthesis_agent.text} />
-            ) : null}
-          </div>
+
+              <div className="space-y-8">
+                <ChartPanel />
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {agentConfig.map((config) => (
+                    <div key={config.id} className="relative">
+                      {signals[config.id].loading && (
+                        <div className="absolute inset-0 bg-bg/50 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-lg border border-border/50">
+                          <div className="flex flex-col items-center">
+                            <Loader2 className="animate-spin text-accent mb-2" />
+                            <span className="text-xs text-text-muted">Analyzing {config.label}...</span>
+                          </div>
+                        </div>
+                      )}
+                      <SignalCard
+                        agent={config.label}
+                        text={signals[config.id].text || (signals[config.id].loading ? '' : 'No data yet.')}
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                {signals.synthesis_agent.loading ? (
+                  <div className="bg-surface-2 border border-border border-dashed rounded-xl p-8 flex flex-col items-center justify-center">
+                    <Loader2 className="animate-spin text-accent mb-3" size={32} />
+                    <p className="text-text-muted">Synthesizing final report...</p>
+                  </div>
+                ) : signals.synthesis_agent.text ? (
+                  <SummaryBubble text={signals.synthesis_agent.text} />
+                ) : null}
+
+                {signals.synthesis_agent.text && !signals.synthesis_agent.loading && (
+                  <div className="flex justify-center mt-4">
+                    <button
+                      onClick={() => setShowChat(true)}
+                      className="border border-accent text-accent rounded-lg px-4 py-2 text-sm hover:bg-accent hover:text-white transition"
+                    >
+                      Ask a follow-up
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {activeTab === 'auto' && (
+            <AutoDetector 
+              onInvestigate={(date) => { 
+                setActiveTab('manual'); 
+                setQuery(`Why did Google CPA increase on ${date}?`); 
+                // Using a slight timeout to ensure state updates before running analysis
+                setTimeout(() => runAnalysis(), 0); 
+              }} 
+            />
+          )}
+
+          {showChat && (
+            <ChatThread 
+              analysisResult={analysisResult} 
+              onClose={() => setShowChat(false)} 
+            />
+          )}
         </main>
       </div>
     </div>
