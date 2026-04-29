@@ -2,10 +2,8 @@ import os
 from dotenv import load_dotenv
 from google.cloud import bigquery
 
-load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
-
 # Initialize BigQuery client using BQ_PROJECT_ID from environment
-client = bigquery.Client(project=os.getenv("BQ_PROJECT_ID"))
+client = bigquery.Client(project=os.getenv("GOOGLE_CLOUD_PROJECT"))
 
 def query_bigquery(sql: str) -> dict:
     """

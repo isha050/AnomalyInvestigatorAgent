@@ -5,6 +5,7 @@ import ChartPanel from './components/ChartPanel';
 import SummaryBubble from './components/SummaryBubble';
 import AutoDetector from './components/AutoDetector';
 import ChatThread from './components/ChatThread';
+import ScenarioSimulator from './components/ScenarioSimulator';
 
 const Investigator = () => {
   const [activeTab, setActiveTab] = useState('manual');
@@ -136,6 +137,16 @@ const Investigator = () => {
             >
               Auto Detector
             </button>
+            <button
+              onClick={() => setActiveTab('simulator')}
+              className={`pb-3 text-lg font-medium transition-colors ${
+                activeTab === 'simulator'
+                  ? 'border-b-2 border-accent text-accent'
+                  : 'text-text-muted hover:text-text-primary'
+              }`}
+            >
+              Scenario Simulator
+            </button>
           </div>
 
           {activeTab === 'manual' && (
@@ -217,6 +228,10 @@ const Investigator = () => {
                 setTimeout(() => runAnalysis(), 0); 
               }} 
             />
+          )}
+
+          {activeTab === 'simulator' && (
+            <ScenarioSimulator />
           )}
 
           {showChat && (
