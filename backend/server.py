@@ -1,6 +1,10 @@
 import os
+import httpx
 from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+
+LIFESIGHT_BASE  = "http://console-platform-stg.lifesight.io"
+LIFESIGHT_TOKEN = os.getenv("LIFESIGHT_TOKEN", "")
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,22 +42,40 @@ runner = Runner(
 from data_loader import SPEND_DATA, CREATIVE_DATA, CVR_DATA, COMPETITOR_TREND_DATA
 
 @app.get("/chart-data")
-async def get_chart_data():
-    def filter_google(dataset, value_key="spend"):
+async def get_chart_data(channel: str = "Google"):
+    def filter_by_channel(dataset, channel_name, value_key="spend"):
         seen_dates = set()
         result = []
         for row in dataset:
-            if row.get("channel") == "Google" and row["date"] not in seen_dates:
+            if row.get("channel") == channel_name and row["date"] not in seen_dates:
                 seen_dates.add(row["date"])
                 result.append({"date": row["date"], "value": row[value_key]})
         result.sort(key=lambda x: x["date"])
         return result
 
+    # Note: CVR_DATA is a dict {date: value}, so we need to cross-reference with SPEND_DATA to filter by channel if we wanted to.
+    # However, the prompt implies filtering ALL 4 charts by channel.
+    # CVR in data_loader.py is loaded from a table marketing_data.cvr_data which doesn't seem to have channel.
+    # Looking at fit_channel_models in scenario_model.py, it uses spend_data[channel] and cvr_data[date].
+    # Let's assume CVR is global or shared for now, OR try to find channel-specific CVR if available.
+    # Actually, the prompt says "filtered to that channel".
+    
+    spend = filter_by_channel(SPEND_DATA, channel, "spend")
+    ctr = filter_by_channel(CREATIVE_DATA, channel, "ctr")
+    
+    # For CVR and Competitor, we'll return them as they are if they aren't channel-specific in the schema,
+    # or filter them if the schema allows. In data_loader.py, they are simple dicts {date: value}.
+    # To satisfy the "filtered to that channel" requirement for ALL 4, we'll use the dates present in spend for that channel.
+    valid_dates = {item["date"] for item in spend}
+    
+    cvr = [{"date": date, "value": val} for date, val in sorted(CVR_DATA.items()) if date in valid_dates]
+    competitor = [{"date": date, "value": val} for date, val in sorted(COMPETITOR_TREND_DATA.items()) if date in valid_dates]
+
     return {
-        "spend": filter_google(SPEND_DATA, "spend"),
-        "ctr": filter_google(CREATIVE_DATA, "ctr"),
-        "cvr": [{"date": date, "value": val} for date, val in sorted(CVR_DATA.items())],
-        "competitor": [{"date": date, "value": val} for date, val in sorted(COMPETITOR_TREND_DATA.items())]
+        "spend": spend,
+        "ctr": ctr,
+        "cvr": cvr,
+        "competitor": competitor
     }
 
 @app.post("/analyze")
@@ -310,6 +332,57 @@ Write a 3-5 bullet analysis:
     except Exception as e:
         traceback.print_exc()
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.get("/causal-dag-settings")
+async def get_causal_dag_settings(dagType: str = "MMM"):
+    url = f"{LIFESIGHT_BASE}/api/v1/account/settings/causal-dag"
+    headers = {"Accept": "application/json"}
+    if LIFESIGHT_TOKEN:
+        headers["Authorization"] = f"Bearer {LIFESIGHT_TOKEN}"
+    params = {"dagType": dagType}
+    
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            response = await client.get(url, headers=headers, params=params)
+            response.raise_for_status()
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching causal-dag-settings: {e}")
+        return {
+            "data": None,
+            "success": False,
+            "errors": [f"Could not reach Lifesight API: {str(e)}"],
+            "_fallback": True,
+            "config": {
+                "id": None,
+                "models": [],
+                "dagGenerationStrategy": "AUTO",
+                "dagGenerationStatus": "PENDING",
+                "dagGenerationFailureReason": None,
+                "dagType": "MMM",
+                "lastUpdatedAt": None
+            }
+        }
+
+@app.post("/causal-dag-settings")
+async def post_causal_dag_settings(request: Request):
+    url = f"{LIFESIGHT_BASE}/api/v1/account/settings/causal-dag"
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    }
+    if LIFESIGHT_TOKEN:
+        headers["Authorization"] = f"Bearer {LIFESIGHT_TOKEN}"
+    
+    try:
+        body = await request.json()
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            response = await client.post(url, headers=headers, json=body)
+            response.raise_for_status()
+            return response.json()
+    except Exception as e:
+        print(f"Error posting causal-dag-settings: {e}")
+        return { "success": False, "errors": [str(e)], "_fallback": True }
 
 if __name__ == "__main__":
     import uvicorn
