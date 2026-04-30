@@ -3,8 +3,15 @@ import httpx
 from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
-LIFESIGHT_BASE  = "http://console-platform-stg.lifesight.io"
-LIFESIGHT_TOKEN = os.getenv("LIFESIGHT_TOKEN", "")
+LIFESIGHT_BASE = os.getenv("MMM_BASE_URL", "https://console-platform-stg.lifesight.io")
+
+def _ls_headers():
+    return {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "x-moda-workspace": os.getenv("MMM_WORKSPACE", ""),
+        "x-moda-apikey":    os.getenv("MMM_APIKEY", ""),
+    }
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,10 +42,6 @@ app.add_middleware(
 
 @app.get("/mmm-status")
 async def mmm_status():
-    """
-    Checks whether our read access to the external MMM API is working.
-    Does not modify anything externally.
-    """
     result = await anyio.to_thread.run_sync(get_mmm_contributions)
     if result is None:
         return {"status": "unavailable", "detail": "Check MMM env vars or API connectivity"}
@@ -69,21 +72,10 @@ async def get_chart_data(channel: str = "Google"):
         result.sort(key=lambda x: x["date"])
         return result
 
-    # Note: CVR_DATA is a dict {date: value}, so we need to cross-reference with SPEND_DATA to filter by channel if we wanted to.
-    # However, the prompt implies filtering ALL 4 charts by channel.
-    # CVR in data_loader.py is loaded from a table marketing_data.cvr_data which doesn't seem to have channel.
-    # Looking at fit_channel_models in scenario_model.py, it uses spend_data[channel] and cvr_data[date].
-    # Let's assume CVR is global or shared for now, OR try to find channel-specific CVR if available.
-    # Actually, the prompt says "filtered to that channel".
-    
     spend = filter_by_channel(SPEND_DATA, channel, "spend")
     ctr = filter_by_channel(CREATIVE_DATA, channel, "ctr")
-    
-    # For CVR and Competitor, we'll return them as they are if they aren't channel-specific in the schema,
-    # or filter them if the schema allows. In data_loader.py, they are simple dicts {date: value}.
-    # To satisfy the "filtered to that channel" requirement for ALL 4, we'll use the dates present in spend for that channel.
+
     valid_dates = {item["date"] for item in spend}
-    
     cvr = [{"date": date, "value": val} for date, val in sorted(CVR_DATA.items()) if date in valid_dates]
     competitor = [{"date": date, "value": val} for date, val in sorted(COMPETITOR_TREND_DATA.items()) if date in valid_dates]
 
@@ -115,12 +107,9 @@ async def analyze(request: Request):
         def run_agents():
             results = []
             try:
-                # Read MMM data from external API (GET only, nothing written externally)
                 mmm_result = get_mmm_contributions()
                 mmm_text = format_mmm_for_agent(mmm_result)
 
-                # Append MMM context to the user query so our synthesis
-                # agent can use it alongside the 5 agent findings
                 enriched_query = (
                     f"{query}\n\n"
                     f"--- ADDITIONAL CONTEXT FROM MMM MODEL ---\n"
@@ -134,7 +123,7 @@ async def analyze(request: Request):
                 for event in runner.run(
                     user_id=user_id,
                     session_id=session_id,
-                    new_message=enriched_message   # ← use enriched message, not original
+                    new_message=enriched_message
                 ):
                     print(f">>> EVENT received: is_final={event.is_final_response()}")
                     if event.is_final_response() and event.content and event.content.parts:
@@ -211,7 +200,6 @@ async def drilldown(request: Request):
             yield {"event": "message", "data": json.dumps({"agent": "drilldown_agent", "text": answer})}
 
         except Exception as e:
-            import traceback
             traceback.print_exc()
             yield {"event": "message", "data": json.dumps({"agent": "drilldown_agent", "text": f"Error: {str(e)}"})}
 
@@ -219,7 +207,6 @@ async def drilldown(request: Request):
 
     return EventSourceResponse(event_generator())
 
-from datetime import datetime
 from auto_detector import detect_all_anomalies
 from fastapi.responses import JSONResponse
 
@@ -239,15 +226,14 @@ async def auto_detect():
 async def get_scenario_models():
     try:
         models, skipped_channels = fit_channel_models(SPEND_DATA, CVR_DATA)
-        
-        # Add history to each model
+
         for channel in models:
             models[channel]["history"] = get_channel_spend_history(SPEND_DATA, channel, 30)
 
         total_historical_spend = sum(item["spend"] for item in SPEND_DATA)
         dates = [item["date"] for item in SPEND_DATA]
         channels = sorted(list(set(item["channel"] for item in SPEND_DATA)))
-        
+
         return {
             "channels": channels,
             "models": models,
@@ -267,40 +253,40 @@ async def simulate(request: Request):
         data = await request.json()
         allocations = data.get("allocations", {})
         baseline_date_str = data.get("baseline_date")
-        
+
         models, _ = fit_channel_models(SPEND_DATA, CVR_DATA)
-        
+
         all_dates = sorted(list(set(item["date"] for item in SPEND_DATA)))
         if not all_dates:
             return JSONResponse(status_code=400, content={"error": "No spend data available"})
-            
+
         if not baseline_date_str or baseline_date_str not in all_dates:
             baseline_date_str = all_dates[-1]
-        
+
         baseline_dt = datetime.strptime(baseline_date_str, "%Y-%m-%d")
         start_dt = baseline_dt - timedelta(days=7)
-        
+
         baseline_allocs = {}
         channels = set(item["channel"] for item in SPEND_DATA)
         for channel in channels:
             channel_spend_in_window = [
-                item["spend"] for item in SPEND_DATA 
-                if item["channel"] == channel and 
+                item["spend"] for item in SPEND_DATA
+                if item["channel"] == channel and
                 start_dt <= datetime.strptime(item["date"], "%Y-%m-%d") < baseline_dt
             ]
             baseline_allocs[channel] = sum(channel_spend_in_window) / 7.0 if channel_spend_in_window else 0.0
 
         scenario_details, scenario_summary = simulate_scenario(models, allocations)
         baseline_details, baseline_summary = simulate_scenario(models, baseline_allocs)
-        
+
         conversion_change_pct = 0.0
         if baseline_summary["total_conversions"] > 0:
-            conversion_change_pct = ((scenario_summary["total_conversions"] - baseline_summary["total_conversions"]) / 
+            conversion_change_pct = ((scenario_summary["total_conversions"] - baseline_summary["total_conversions"]) /
                                      baseline_summary["total_conversions"]) * 100
-                                     
+
         cpa_change_pct = 0.0
         if baseline_summary["blended_cpa"] > 0:
-            cpa_change_pct = ((scenario_summary["blended_cpa"] - baseline_summary["blended_cpa"]) / 
+            cpa_change_pct = ((scenario_summary["blended_cpa"] - baseline_summary["blended_cpa"]) /
                               baseline_summary["blended_cpa"]) * 100
 
         recommendation = f"Scenario results in a {abs(cpa_change_pct):.1f}% {'improvement' if cpa_change_pct < 0 else 'increase'} in blended CPA."
@@ -320,7 +306,7 @@ async def simulate(request: Request):
             from google import genai
             from google.genai import types
             client = genai.Client()
-            
+
             system_prompt = "You are a senior marketing analyst. Be concise, specific, and decisive. No hedging. Use bullet points."
             user_prompt = f"""
 A user ran a budget scenario simulation. Here are the results:
@@ -344,9 +330,7 @@ Write a 3-5 bullet analysis:
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=[types.Content(role="user", parts=[types.Part(text=user_prompt)])],
-                config=types.GenerateContentConfig(
-                    system_instruction=system_prompt
-                )
+                config=types.GenerateContentConfig(system_instruction=system_prompt)
             )
             narration = response.text
         except Exception as e:
@@ -364,17 +348,15 @@ Write a 3-5 bullet analysis:
         traceback.print_exc()
         return JSONResponse(status_code=500, content={"error": str(e)})
 
+
+# ── Causal DAG endpoints ──────────────────────────────────────────────────────
+
 @app.get("/causal-dag-settings")
 async def get_causal_dag_settings(dagType: str = "MMM"):
     url = f"{LIFESIGHT_BASE}/api/v1/account/settings/causal-dag"
-    headers = {"Accept": "application/json"}
-    if LIFESIGHT_TOKEN:
-        headers["Authorization"] = f"Bearer {LIFESIGHT_TOKEN}"
-    params = {"dagType": dagType}
-    
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
-            response = await client.get(url, headers=headers, params=params)
+            response = await client.get(url, headers=_ls_headers(), params={"dagType": dagType})
             response.raise_for_status()
             return response.json()
     except Exception as e:
@@ -382,7 +364,7 @@ async def get_causal_dag_settings(dagType: str = "MMM"):
         return {
             "data": None,
             "success": False,
-            "errors": [f"Could not reach Lifesight API: {str(e)}"],
+            "errors": [str(e)],
             "_fallback": True,
             "config": {
                 "id": None,
@@ -391,29 +373,36 @@ async def get_causal_dag_settings(dagType: str = "MMM"):
                 "dagGenerationStatus": "PENDING",
                 "dagGenerationFailureReason": None,
                 "dagType": "MMM",
-                "lastUpdatedAt": None
-            }
+                "lastUpdatedAt": None,
+            },
         }
 
 @app.post("/causal-dag-settings")
 async def post_causal_dag_settings(request: Request):
     url = f"{LIFESIGHT_BASE}/api/v1/account/settings/causal-dag"
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-    }
-    if LIFESIGHT_TOKEN:
-        headers["Authorization"] = f"Bearer {LIFESIGHT_TOKEN}"
-    
     try:
         body = await request.json()
         async with httpx.AsyncClient(timeout=8.0) as client:
-            response = await client.post(url, headers=headers, json=body)
+            response = await client.post(url, headers=_ls_headers(), json=body)
             response.raise_for_status()
             return response.json()
     except Exception as e:
         print(f"Error posting causal-dag-settings: {e}")
-        return { "success": False, "errors": [str(e)], "_fallback": True }
+        return {"success": False, "errors": [str(e)], "_fallback": True}
+
+@app.get("/causal-dag-graph")
+async def get_causal_dag_graph(modelId: str = ""):
+    url = f"{LIFESIGHT_BASE}/mmm/causal-dag"
+    params = {"modelId": modelId} if modelId else {}
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            response = await client.get(url, headers=_ls_headers(), params=params)
+            response.raise_for_status()
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching causal-dag-graph: {e}")
+        return {"data": None, "success": False, "errors": [str(e)]}
+
 
 if __name__ == "__main__":
     import uvicorn
