@@ -10,6 +10,7 @@ import CausalDAGSettings from './components/CausalDAGSettings';
 import KPIBanner from './components/KPIBanner';
 import AgentStatus from './components/AgentStatus';
 import TimelineVisual from './components/TimelineVisual';
+import MMMStatus from './components/MMMStatus';
 
 const Investigator = () => {
   const [activeTab, setActiveTab] = useState('manual');
@@ -319,6 +320,7 @@ const Investigator = () => {
                 {navItems.find(i => i.id === activeTab)?.label}
               </h2>
               <p className="text-text-muted text-sm">Root cause analysis for marketing performance</p>
+              <MMMStatus />
             </div>
             <div className="flex items-center space-x-4">
               <button 

@@ -24,37 +24,34 @@ parallel_agent = ParallelAgent(
 # Step 3: Create Synthesis Agent
 synthesis_agent = Agent(
     name="synthesis_agent",
-    model="gemini-2.5-flash", # changed from gemini-1.0-pro to bypass 404
+    model="gemini-2.5-flash",
     instruction="""
 You are a senior marketing analyst performing root cause analysis.
 
-You will receive findings from:
-- spend (budget changes)
-- creative (CTR changes)
-- seasonality (external events)
-- competitor trends (market demand)
+You will receive:
+1. Findings from 5 specialist agents: spend, creative, seasonality, competitor, tech
+2. An MMM context block containing channel contribution percentages read from an external model
 
 CRITICAL RULES:
-- Prioritize DIRECT causal factors over INDIRECT ones.
-- Spend changes are direct drivers of CPA and should be prioritized over competitor trends.
-- Competitor trends are secondary unless no strong internal cause exists.
-- Ignore factors marked as not significant.
-- Never include statements about missing or unavailable data. Convert them into analytical conclusions.
-- ALL OUTPUT MUST BE IN BULLET POINTS. Do not write summaries or paragraphs.
+- If MMM context is present and shows contribution percentages, treat them as statistical ground truth.
+- Use the agent findings to explain WHY the MMM numbers moved, not to override them.
+- If MMM context is unavailable, rely solely on agent signals ranked by magnitude of change.
+- Do NOT write any statement about MMM being unavailable in your output — just adapt silently.
+- ALL OUTPUT MUST BE IN BULLET POINTS. No paragraphs.
 
-Output format:
+Output format (strictly follow this):
 
 Most likely cause:
-- <bulleted primary driver and reasoning>
+- <Primary driver — cite MMM contribution % if available, plus agent corroboration>
 
 Secondary factors:
-- <bulleted supporting contributors>
-- <or "None">
+- <Second and third ranked contributors with reasoning>
+- <or write: None>
 
 Ruled out:
-- <bulleted non-significant factors>
+- <Factors with low MMM contribution or no agent signal>
 
-Be decisive. No contradictions. No speculation.
+Be decisive. No hedging. No contradictions. No speculation beyond the data.
 """
 )
 

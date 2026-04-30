@@ -15,6 +15,7 @@ from google.adk.sessions import InMemorySessionService
 from google.genai.types import Content, Part
 from coordinator_agent import coordinator
 from scenario_model import fit_channel_models, simulate_scenario, predict_cvr, get_channel_spend_history
+from mmm_client import get_mmm_contributions, format_mmm_for_agent
 import asyncio
 import json
 import anyio
@@ -31,6 +32,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/mmm-status")
+async def mmm_status():
+    """
+    Checks whether our read access to the external MMM API is working.
+    Does not modify anything externally.
+    """
+    result = await anyio.to_thread.run_sync(get_mmm_contributions)
+    if result is None:
+        return {"status": "unavailable", "detail": "Check MMM env vars or API connectivity"}
+    return {
+        "status": "ok",
+        "model_id": result["model_id"],
+        "contributions": result["contributions"]
+    }
 
 session_service = InMemorySessionService()
 runner = Runner(
@@ -99,11 +115,26 @@ async def analyze(request: Request):
         def run_agents():
             results = []
             try:
+                # Read MMM data from external API (GET only, nothing written externally)
+                mmm_result = get_mmm_contributions()
+                mmm_text = format_mmm_for_agent(mmm_result)
+
+                # Append MMM context to the user query so our synthesis
+                # agent can use it alongside the 5 agent findings
+                enriched_query = (
+                    f"{query}\n\n"
+                    f"--- ADDITIONAL CONTEXT FROM MMM MODEL ---\n"
+                    f"{mmm_text}\n"
+                    f"--- END MMM CONTEXT ---"
+                )
+
+                enriched_message = Content(role="user", parts=[Part(text=enriched_query)])
+
                 print(">>> runner.run() starting...")
                 for event in runner.run(
                     user_id=user_id,
                     session_id=session_id,
-                    new_message=message
+                    new_message=enriched_message   # ← use enriched message, not original
                 ):
                     print(f">>> EVENT received: is_final={event.is_final_response()}")
                     if event.is_final_response() and event.content and event.content.parts:
