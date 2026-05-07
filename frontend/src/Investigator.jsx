@@ -534,11 +534,14 @@ const Investigator = () => {
 
             {activeTab === 'auto' && (
               <AutoDetector 
-                onInvestigate={(date) => { 
-                  setActiveTab('manual'); 
-                  setQuery(`Why did Google CPA increase on ${date}?`); 
+                onInvestigate={(date, channels) => { 
+                  setActiveTab('manual');
+                  const channelList = channels && channels.length > 0 ? channels : ['Google'];
+                  const channelText = channelList.length === 1 
+                      ? channelList[0]
+                      : channelList.slice(0, -1).join(', ') + ' and ' + channelList[channelList.length - 1];
+                  setQuery(`Why did CPA increase across ${channelText} on ${date}?`);
                   setAnomalyDate(date);
-                  // Using a slight timeout to ensure state updates before running analysis
                   setTimeout(() => runAnalysis(), 0); 
                 }} 
               />

@@ -28,6 +28,7 @@ import json
 import anyio
 import traceback
 import time
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from datetime import datetime, timedelta
 
 app = FastAPI()
@@ -110,6 +111,9 @@ async def analyze(request: Request):
                 mmm_result = get_mmm_contributions()
                 mmm_text = format_mmm_for_agent(mmm_result)
 
+                memories = retrieve_similar(query, top_k=3)
+                memory_text = format_memory_for_agent(memories)
+
                 enriched_query = (
                     f"{query}\n\n"
                     f"--- ADDITIONAL CONTEXT FROM MMM MODEL ---\n"
@@ -117,9 +121,14 @@ async def analyze(request: Request):
                     f"--- END MMM CONTEXT ---"
                 )
 
+                if memory_text:
+                    enriched_query += f"\n\n{memory_text}"
+
                 enriched_message = Content(role="user", parts=[Part(text=enriched_query)])
 
                 print(">>> runner.run() starting...")
+                synthesis_text = None
+
                 for event in runner.run(
                     user_id=user_id,
                     session_id=session_id,
@@ -132,6 +141,27 @@ async def analyze(request: Request):
                             agent_name = getattr(event, "author", "unknown")
                             print(f">>> RESULT agent={agent_name} text={text[:80]}")
                             results.append({"agent": agent_name, "text": text})
+                            if agent_name == "synthesis_agent":
+                                synthesis_text = text
+
+                if synthesis_text:
+                    import re
+                    date_match = re.search(r"\d{4}-\d{2}-\d{2}", query)
+                    channel_match = re.search(r"\b(Google|Meta|TikTok|Facebook)\b", query, re.IGNORECASE)
+                    store_analysis(
+                        query=query,
+                        synthesis_text=synthesis_text,
+                        date=date_match.group(0) if date_match else None,
+                        channel=channel_match.group(0) if channel_match else None,
+                        mmm_snapshot=mmm_text
+                    )
+                    send_investigation_alert(
+                        query=query,
+                        synthesis_text=synthesis_text,
+                        date=date_match.group(0) if date_match else None,
+                        channel=channel_match.group(0) if channel_match else None
+                    )
+
                 print(f">>> runner.run() done. {len(results)} results collected.")
             except Exception as e:
                 print(f">>> AGENT ERROR: {e}")
@@ -207,6 +237,8 @@ async def drilldown(request: Request):
 
     return EventSourceResponse(event_generator())
 
+from analysis_memory import store_analysis, retrieve_similar, format_memory_for_agent
+from slack_notifier import send_anomaly_alert, send_investigation_alert
 from auto_detector import detect_all_anomalies
 from fastapi.responses import JSONResponse
 
@@ -214,10 +246,21 @@ from fastapi.responses import JSONResponse
 async def auto_detect():
     try:
         result = detect_all_anomalies(30)
+        scan_date = datetime.today().strftime("%Y-%m-%d")
+        await anyio.to_thread.run_sync(
+            lambda: send_anomaly_alert(result, scan_date, 30)
+        )
         return {
             "anomalies": result,
-            "scan_date": datetime.today().strftime("%Y-%m-%d"),
-            "total_dates_scanned": 30
+            "scan_date": scan_date,
+            "total_dates_scanned": 30,
+            "multi_channel_dates": [
+                a["date"] for a in result
+                if a.get("correlation_type") == "multi_channel_event"
+            ],
+            "channels_scanned": sorted(list(set(
+                item["channel"] for item in SPEND_DATA
+            )))
         }
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
@@ -402,6 +445,31 @@ async def get_causal_dag_graph(modelId: str = ""):
     except Exception as e:
         print(f"Error fetching causal-dag-graph: {e}")
         return {"data": None, "success": False, "errors": [str(e)]}
+
+
+async def scheduled_scan():
+    print("[scheduler] running scheduled anomaly scan")
+    try:
+        result = detect_all_anomalies(30)
+        scan_date = datetime.today().strftime("%Y-%m-%d")
+        send_anomaly_alert(result, scan_date, 30)
+        print(f"[scheduler] scan complete, {len(result)} anomalies found")
+    except Exception as e:
+        print(f"[scheduler] scan failed: {e}")
+
+
+@app.on_event("startup")
+async def start_scheduler():
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(
+        scheduled_scan,
+        trigger="cron",
+        hour=9,
+        minute=0,
+        timezone="Asia/Kolkata"
+    )
+    scheduler.start()
+    print("[scheduler] started - daily scan at 09:00 IST")
 
 
 if __name__ == "__main__":

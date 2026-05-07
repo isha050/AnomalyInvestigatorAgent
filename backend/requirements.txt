@@ -138,3 +138,6 @@ fastapi
 uvicorn
 sse-starlette
 httpx
+chromadb
+APScheduler
+pytz

@@ -12,6 +12,8 @@ ENV/
 
 # Project specifics
 .adk/
+.memory/
+backend/.memory/
 
 # OS generated files
 .DS_Store
